@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FlightPrice Project — 机票价格监控与旅行规划</title>
+<meta name="description" content="A flight price monitoring and trip planning project. Discover cheap fares, verify them against live prices, keep an append-only price history, and only alert on prices that survive verification.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%231d4ed8'/%3E%3Cpath d='M7 18.5l4.2-1.2 4.4-4.6 1.6.5-2.1 4.3 4.3-1.2 1.4 1.4-6.4 3.4-2.2-.6-3.6-2z' fill='%23fff'/%3E%3Ccircle cx='23' cy='10' r='2.2' fill='%2360a5fa'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="#top">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" width="26" height="26"><rect width="32" height="32" rx="7" fill="#1d4ed8"/><path d="M7 18.5l4.2-1.2 4.4-4.6 1.6.5-2.1 4.3 4.3-1.2 1.4 1.4-6.4 3.4-2.2-.6-3.6-2z" fill="#fff"/><circle cx="23" cy="10" r="2.2" fill="#60a5fa"/></svg>
+      </span>
+      <span class="brand-text">
+        <strong>FlightPrice Project</strong>
+        <em>机票价格监控 · 旅行规划</em>
+      </span>
+    </a>
+    <nav class="site-nav" aria-label="Sections">
+      <a href="#intro">项目介绍</a>
+      <a href="#monitoring">Monitoring</a>
+      <a href="#dates">Flexible&nbsp;Dates</a>
+      <a href="#history">Price&nbsp;History</a>
+      <a href="#verification">Verification</a>
+      <a href="#alerts">Alerts</a>
+      <a href="#about">About</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ============ HERO ============ -->
+  <section class="hero">
+    <div class="wrap">
+      <p class="eyebrow">Flight Price Monitoring &amp; Trip Planning</p>
+      <h1>用<em>可验证</em>的价格数据，<br>替代看起来便宜的报价。</h1>
+      <p class="lede">
+        这不是一个"打开网页看价格"的工具。它是一条价格监控管道：
+        发现候选 → 实时二次核价 → 可信度判定 → 只增不改入库 → 仅在可信时通知。
+        核心问题只有一个——<strong>这个低价是真的吗？</strong>
+      </p>
+
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#verification">看验证结论</a>
+        <a class="btn" href="https://github.com/gzhu4186-hub/flightpriceproject">GitHub Repo</a>
+      </div>
+
+      <div class="statusline">
+        <span class="badge badge-warn">Phase 1 · Backend MVP</span>
+        <span class="badge">Status: PARTIAL</span>
+        <span class="badge badge-ok">52 / 52 tests passing</span>
+      </div>
+
+      <dl class="stat-grid">
+        <div class="stat">
+          <dt>合法日期组合</dt>
+          <dd>372</dd>
+          <span>6 航线 × 10 出发 × 10 返程，按行程天数过滤</span>
+        </div>
+        <div class="stat">
+          <dt>行程身份 / 价格观测</dt>
+          <dd>752 <i>/</i> 1444</dd>
+          <span>身份去重，观测只增不改</span>
+        </div>
+        <div class="stat">
+          <dt>假低价拦截</dt>
+          <dd>50 <i>/</i> 50</dd>
+          <span>全部 <code>INVALID_OR_STALE</code>，零误报</span>
+        </div>
+        <div class="stat">
+          <dt>真实命中验证</dt>
+          <dd>6 <i>/</i> 6</dd>
+          <span>误差 0.0%，<code>VERIFIED</code> 路径可达</span>
+        </div>
+      </dl>
+    </div>
+  </section>
+
+  <!-- ============ 项目介绍 ============ -->
+  <section class="section" id="intro">
+    <div class="wrap">
+      <header class="section-head">
+        <h2>项目介绍 <span class="sub">Project Introduction</span></h2>
+        <p>
+          第一阶段的目标不是"做一个比价网站"，而是先回答五个工程可行性问题。
+          只有这五个问题都有实测答案，后面的 Web UI、告警、预测才有意义。
+        </p>
+      </header>
+
+      <ol class="goal-list">
+        <li>
+          <span class="goal-no">01</span>
+          <div>
+            <h3>能否稳定获取机票价格</h3>
+            <p>接入真实数据源并跑通全链路，而非使用固定样本或 mock 数据。已实际调用 Kiwi.com 公开 GraphQL 网关与 Ryanair fare-finder 服务。</p>
+          </div>
+        </li>
+        <li>
+          <span class="goal-no">02</span>
+          <div>
+            <h3>能否区分缓存价与实时价</h3>
+            <p>每次取价都带 <code>source_type</code> / <code>is_cached</code> / <code>is_realtime</code> 标记，缓存数据在架构上被禁止充当核价证据。</p>
+          </div>
+        </li>
+        <li>
+          <span class="goal-no">03</span>
+          <div>
+            <h3>能否保存历史价格</h3>
+            <p>append-only 数据模型：<code>flight_offer</code> 存行程身份，<code>price_observation</code> 存每一次取价，只增不改、互不覆盖。</p>
+          </div>
+        </li>
+        <li>
+          <span class="goal-no">04</span>
+          <div>
+            <h3>能否对低价候选二次核价</h3>
+            <p>对发现阶段排序出的 Top-N 候选，用独立实时源逐个重新取价，再比对两侧报价。</p>
+          </div>
+        </li>
+        <li>
+          <span class="goal-no">05</span>
+          <div>
+            <h3>能否证明结果具有基本可信度</h3>
+            <p>四态判定（<code>DISCOVERED</code> / <code>VERIFIED</code> / <code>HIGH_CONFIDENCE</code> / <code>INVALID_OR_STALE</code>），一致阈值来自配置文件而非硬编码。</p>
+          </div>
+        </li>
+      </ol>
+
+      <div class="callout">
+        <strong>当前阶段边界</strong>
+        <p>Phase 1 只做<strong>后端、CLI、数据库与验证</strong>。按约定<strong>不含</strong> Web UI、Dashboard、携程/去哪儿/飞猪抓取、浏览器自动化、Telegram 告警、AI 分析、价格预测与自动购票。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Flight Price Monitoring ============ -->
+  <section class="section section-alt" id="monitoring">
+    <div class="wrap">
+      <header class="section-head">
+        <h2>Flight Price Monitoring <span class="sub">监控管道</span></h2>
+        <p>一条 run 的生命周期是确定的五步。每一步都落库，因此任何结论都能回溯到具体的请求与响应。</p>
+      </header>
+
+      <ol class="pipeline">
+        <li><span class="step">1</span><strong>Discovery</strong><em>生成合法日期组合，向缓存/指示价源批量取价</em></li>
+        <li><span class="step">2</span><strong>Rank</strong><em>按归一化价格排序，取 Top-N 作为核价候选</em></li>
+        <li><span class="step">3</span><strong>Verify</strong><em>用独立实时源对候选逐个重新取价</em></li>
+        <li><span class="step">4</span><strong>Assess</strong><em>比对发现价与实时价，判定可信度状态</em></li>
+        <li><span class="step">5</span><strong>Store</strong><em>身份去重写入，价格观测追加保留</em></li>
+      </ol>
+
+      <h3 class="block-title">数据源</h3>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr><th>Provider</th><th>角色</th><th>数据性质</th><th>凭证</th><th>状态</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>kiwi_calendar</code></td><td>发现</td><td>缓存价格矩阵 <code>indicative</code></td><td>无</td>
+              <td><span class="pill pill-ok">OK</span></td>
+            </tr>
+            <tr>
+              <td><code>kiwi</code></td><td>核价</td><td>实时搜索 <code>live</code></td><td>无</td>
+              <td><span class="pill pill-ok">OK</span></td>
+            </tr>
+            <tr>
+              <td><code>ryanair</code></td><td>发现</td><td>航司缓存运价 <code>indicative</code></td><td>无</td>
+              <td><span class="pill pill-ok">OK</span></td>
+            </tr>
+            <tr>
+              <td><code>travelpayouts</code></td><td>发现</td><td>缓存 <code>indicative</code></td><td><code>TRAVELPAYOUTS_TOKEN</code></td>
+              <td><span class="pill pill-blocked">BLOCKED_AUTH</span></td>
+            </tr>
+            <tr>
+              <td><code>amadeus</code></td><td>核价</td><td>实时 <code>live</code> / <code>refreshed</code></td><td><code>AMADEUS_CLIENT_ID/SECRET</code></td>
+              <td><span class="pill pill-blocked">BLOCKED_AUTH</span></td>
+            </tr>
+            <tr>
+              <td><code>skyscanner</code></td><td>—</td><td>Indicative / Live / Refresh</td><td>Partners key</td>
+              <td><span class="pill pill-deferred">DEFERRED</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="note">
+        <code>travelpayouts</code> 已发起真实请求并收到 <code>HTTP 401</code>——说明网络可达、端点正确，只缺 token。凭证一律只从环境变量读取，代码内零硬编码，日志与 URL 双层脱敏。
+      </p>
+
+      <h3 class="block-title">Provider 隔离</h3>
+      <p><code>Provider.search()</code> 永不向上抛异常。所有失败被分类为 <code>AuthError</code> / <code>RateLimitError</code> / <code>TransientError</code> / <code>PermanentError</code>，单个源不可用不会中断整条 run，失败原因写入 <code>provider_run</code> 表。</p>
+
+      <h3 class="block-title">CLI</h3>
+      <pre class="code"><code>flight-watch watch list                  <span class="c"># 列出所有 watch 及其窗口 / 组合数</span>
+flight-watch combinations &lt;watch_id&gt;     <span class="c"># 合法日期组合总数与示例</span>
+flight-watch scan &lt;watch_id&gt;             <span class="c"># 发现候选 → TopN → 实时二次核价</span>
+flight-watch offers &lt;watch_id&gt;           <span class="c"># 已存报价（按价格升序）</span>
+flight-watch history &lt;watch_id&gt;          <span class="c"># 只增不改的价格时间序列</span>
+flight-watch verify &lt;watch_id&gt;           <span class="c"># 独立核价 + 验收指标</span>
+flight-watch providers                   <span class="c"># Provider 状态与所需凭证</span>
+flight-watch doctor                      <span class="c"># 环境 / schema / 凭证自检</span></code></pre>
+      <p class="note">HTTP 层统一具备 timeout、指数退避重试、<code>Retry-After</code> 处理与失败分类。</p>
+    </div>
+  </section>
+
+  <!-- ============ Flexible Dates ============ -->
+  <section class="section" id="dates">
+    <div class="wrap">
+      <header class="section-head">
+        <h2>Flexible Dates <span class="sub">灵活日期</span></h2>
+        <p>机票最低价往往出现在日期区间的边缘。系统把"出发窗口 × 返程窗口"展开成全部合法组合，而不是只查一个固定日期。</p>
+      </header>
+
+      <div class="two-col">
+        <div>
+          <h3 class="block-title">合法组合，而非笛卡尔积</h3>
+          <p>组合必须同时满足：落在出发窗口内、落在返程窗口内、行程天数在 <code>min</code> 与 <code>max</code> 之间。</p>
+          <p>本项目实测 watch：</p>
+          <pre class="code"><code>6 条航线 × 10 出发日 × 10 返程日
+→ 名义 600 种，按 7–14 天行程过滤后
+→ <b>372 个合法组合</b></code></pre>
+          <p>另有回归守卫：<code>4/24</code> 出发 + 最短 7 天行程，<strong>不允许</strong>出现 <code>4/25</code> 返程。该用例已被单测锁定。</p>
+        </div>
+        <div>
+          <h3 class="block-title">全部走配置</h3>
+          <p>日期、机场、舱位、人数、候选数量都来自 YAML / JSON，代码中<strong>没有任何硬编码</strong>。</p>
+          <pre class="code"><code>id: new-zealand-2027
+origins:      [PVG, SHA]
+destinations: [AKL, CHC, ZQN]
+departure: {from: 2027-04-24, to: 2027-05-03}
+return:    {from: 2027-05-03, to: 2027-05-12}
+trip_days: {min: 7, max: 14}
+cabin: economy
+passengers: {adults: 2}
+max_stops: 1
+providers:
+  discovery:    [travelpayouts, kiwi_calendar, ryanair]
+  verification: [amadeus, kiwi]
+  top_n: 20</code></pre>
+        </div>
+      </div>
+
+      <div class="callout callout-quiet">
+        <strong>为什么要生成组合而不是逐日查询</strong>
+        <p>组合生成让"缓存价"与"实时价"能够落到<strong>同一个桶</strong>里比对。桶的身份是 <code>ORIGIN-DEST | 出发日 | 返程日 | 舱位 | 成人人数</code>——刻意<strong>不含</strong>中转次数，因此同一行程的缓存报价与实时报价可以被放在一起判断差异。</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Price History ============ -->
+  <section class="section section-alt" id="history">
+    <div class="wrap">
+      <header class="section-head">
+        <h2>Price History <span class="sub">价格历史</span></h2>
+        <p>历史价格是这个项目的地基。如果新一次扫描会覆盖旧价格，那么"价格趋势"根本无从谈起。</p>
+      </header>
+
+      <div class="two-col">
+        <div class="card">
+          <h3>身份与观测分离</h3>
+          <ul class="ticks">
+            <li><code>flight_offer</code> 存<strong>行程身份</strong>，同一行程只出现一次（<code>INSERT OR IGNORE</code>）</li>
+            <li><code>price_observation</code> 存<strong>每一次取价</strong>，只增不改</li>
+            <li>752 条行程身份 ↔ 1444 条价格观测，同一行程被反复观测多次</li>
+            <li>各 run 的观测互不覆盖：<code>run#1=592 · run#2=472 · run#3=100 · run#4=100 · run#5=33 · run#6=147</code></li>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h3>数据库现状</h3>
+          <table class="data-table compact">
+            <tbody>
+              <tr><td><code>watch</code></td><td class="num">2</td></tr>
+              <tr><td><code>flight_offer</code></td><td class="num">752</td></tr>
+              <tr><td><code>price_observation</code></td><td class="num">1444</td></tr>
+              <tr><td><code>scan_run</code></td><td class="num">6</td></tr>
+              <tr><td><code>provider_run</code></td><td class="num">84</td></tr>
+              <tr><td><code>candidate_verification</code></td><td class="num">57</td></tr>
+            </tbody>
+          </table>
+          <p class="note">SQLite，schema_version 1。</p>
+        </div>
+      </div>
+
+      <h3 class="block-title">同一行程的真实时间序列</h3>
+      <p>直接查询数据库得到的原文：第二次扫描之后，第一次扫描的价格<strong>仍然在表里</strong>。</p>
+      <pre class="code code-proof"><code>signature PVG-CHC|2027-04-26|2027-05-12|economy|A2
+  obs=42  distinct_ts=4  price 13197..20540  runs=1,2,3,4
+
+  run#1  07:06:54  kiwi_calendar  indicative  is_realtime=0 is_cached=1  CNY 13197
+  run#1  07:06:54  kiwi           live        is_realtime=1 is_cached=0  CNY 18442
+  run#2  07:08:22  kiwi_calendar  indicative  is_realtime=0 is_cached=1  CNY 13197   <span class="c">&lt;- 旧值仍在</span>
+  run#4  07:09:23  kiwi           live        is_realtime=1 is_cached=0  CNY 20540
+
+✓ 历史报价已保留，且未被后续 run 覆盖。</code></pre>
+    </div>
+  </section>
+
+  <!-- ============ Multi-source Verification ============ -->
+  <section class="section" id="verification">
+    <div class="wrap">
+      <header class="section-head">
+        <h2>Multi-source Verification <span class="sub">多源核价</span></h2>
+        <p>这是整个项目最有价值的部分。缓存价会骗人，而且骗得很整齐。</p>
+      </header>
+
+      <h3 class="block-title">四态判定</h3>
+      <div class="state-grid">
+        <div class="state state-discovered">
+          <code>DISCOVERED</code>
+          <p>只有发现价，尚未核价。候选的默认状态。</p>
+        </div>
+        <div class="state state-verified">
+          <code>VERIFIED</code>
+          <p>实时源复现了发现价，差异在阈值内（默认 <strong>≤5%</strong>）。</p>
+        </div>
+        <div class="state state-high">
+          <code>HIGH_CONFIDENCE</code>
+          <p>≥2 个<strong>独立实时源</strong>同时给出接近报价。</p>
+        </div>
+        <div class="state state-invalid">
+          <code>INVALID_OR_STALE</code>
+          <p>发现价明显低于所有实时报价，差异超过失效阈值（默认 <strong>&gt;15%</strong>）。</p>
+        </div>
+      </div>
+      <p class="note">阈值写在 <code>config/settings.yaml</code>（<code>agreement_threshold_pct: 5.0</code>、<code>stale_threshold_pct: 15.0</code>），不硬编码在逻辑里。跨币种比对使用静态 FX 归一为可比价。</p>
+
+      <h3 class="block-title">本阶段全部评估结果</h3>
+      <div class="result-row">
+        <div class="result result-verified"><span class="result-num">7</span><span class="result-label">VERIFIED</span><em>其中 6 条误差 0.0%</em></div>
+        <div class="result result-invalid"><span class="result-num">50</span><span class="result-label">INVALID_OR_STALE</span><em>已拦截，不得作为真实低价通知</em></div>
+        <div class="result result-high"><span class="result-num">0</span><span class="result-label">HIGH_CONFIDENCE</span><em>需 ≥2 独立实时源，本环境仅 1 个可用</em></div>
+      </div>
+
+      <h3 class="block-title">三条对照证据（同一套代码，不同源组合）</h3>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr><th>场景</th><th>发现源 → 核价源</th><th>候选</th><th>结果</th><th>平均误差</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>欧洲短途（同厂商双路径）</td>
+              <td><code>kiwi_calendar</code> → <code>kiwi</code></td>
+              <td>6</td>
+              <td><span class="pill pill-ok">6 VERIFIED</span></td>
+              <td class="num ok">+0.0%</td>
+            </tr>
+            <tr>
+              <td>欧洲短途（跨厂商）</td>
+              <td><code>ryanair</code> → <code>kiwi</code></td>
+              <td>3</td>
+              <td><span class="pill pill-bad">3 STALE</span></td>
+              <td class="num bad">+32.8%</td>
+            </tr>
+            <tr>
+              <td>新西兰长途 2027</td>
+              <td><code>kiwi_calendar</code> → <code>kiwi</code></td>
+              <td>20</td>
+              <td><span class="pill pill-bad">1 VERIFIED / 19 STALE</span></td>
+              <td class="num bad">+38.1%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="block-title">核心发现：缓存价对新西兰 2027 系统性乐观 30–40%</h3>
+
+      <figure class="chart-card">
+        <figcaption>同一日期 · 同一人数 · 同一航线 <span>PVG → CHC，2027-04-27 → 2027-05-06，2 adults</span></figcaption>
+        <div class="bar-row">
+          <span class="bar-label">缓存价格矩阵<em>indicative</em></span>
+          <div class="bar-track"><div class="bar bar-cache" style="width:71.7%">CNY 13,938</div></div>
+        </div>
+        <div class="bar-row">
+          <span class="bar-label">实时往返搜索<em>live</em></span>
+          <div class="bar-track"><div class="bar bar-live" style="width:100%">CNY 19,429</div></div>
+        </div>
+        <p class="chart-note">
+          差异 <strong>+39.4%</strong>。对照组：同一实时源 1 成人报价 <strong>CNY 9,714</strong>，恰为 2 成人报价的一半——说明人数参数正确，
+          <strong>不是适配器读错，是缓存价本身失真</strong>。
+        </p>
+      </figure>
+
+      <div class="callout callout-strong">
+        <strong>所以这个项目在做什么</strong>
+        <p>如果只做"发现"，那 50 个假低价会被直接推送出去，看起来全是好消息，实际一个都买不到。
+        第一阶段的验收目标正是拦下它们——<strong>50 / 50 全部拦下</strong>。同时 <code>VERIFIED</code> 路径被证明可达（6/6，误差 0.0%）：<strong>低价一旦为真，系统能确认它。</strong></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ Low-price Alerts ============ -->
+  <section class="section section-alt" id="alerts">
+    <div class="wrap">
+      <header class="section-head">
+        <h2>Low-price Alerts <span class="sub">低价提醒</span></h2>
+        <p>提醒的价值不在于"发得多"，而在于"发的都是真的"。因此提醒规则由可信度状态直接决定。</p>
+      </header>
+
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr><th>可信度状态</th><th>是否允许通知</th><th>理由</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>VERIFIED</code></td>
+              <td><span class="pill pill-ok">通知</span></td>
+              <td>已被独立实时源确认，可直接行动</td>
+            </tr>
+            <tr>
+              <td><code>HIGH_CONFIDENCE</code></td>
+              <td><span class="pill pill-ok">通知（最高优先级）</span></td>
+              <td>≥2 个独立实时源一致，可信度最高</td>
+            </tr>
+            <tr>
+              <td><code>DISCOVERED</code></td>
+              <td><span class="pill pill-idle">静默</span></td>
+              <td>尚未核价，仅作为候选记录</td>
+            </tr>
+            <tr>
+              <td><code>INVALID_OR_STALE</code></td>
+              <td><span class="pill pill-bad">必须静默</span></td>
+              <td>已被证伪的假低价，推送即误导</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <h3>当前进度</h3>
+          <p>数据层已经完全可以支撑这条规则：<code>candidate_verification</code> 表里 57 条判定结果随时可查询。通知通道本身（Telegram / 邮件等）按约定属于后续阶段。</p>
+        </div>
+        <div class="card">
+          <h3>为什么先做核价再做通知</h3>
+          <p>实测数据显示，同一批候选中 87.7%（50/57）在核价后被证伪。先接通知等于先批量制造噪音。顺序反了，这个功能就是负价值。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ About ============ -->
+  <section class="section" id="about">
+    <div class="wrap">
+      <header class="section-head">
+        <h2>About <span class="sub">关于项目</span></h2>
+        <p>一个以"可验证"为前提的机票价格监控后端。Python 3.13 / CLI / SQLite，无 Web 框架，无前端依赖。</p>
+      </header>
+
+      <div class="two-col">
+        <div>
+          <h3 class="block-title">技术栈</h3>
+          <ul class="ticks">
+            <li>Python <strong>3.13</strong> + <code>argparse</code> CLI</li>
+            <li>SQLite 持久化，<code>schema_version 1</code></li>
+            <li><code>PyYAML</code> 为<strong>唯一</strong>第三方运行时依赖</li>
+            <li>HTTP 层基于标准库 <code>urllib</code>，自带重试与退避</li>
+            <li>测试 <strong>52 项</strong>，全部通过</li>
+          </ul>
+        </div>
+        <div>
+          <h3 class="block-title">代码结构</h3>
+          <pre class="code"><code>src/flight_watch/
+  models.py      统一数据模型 / 异常分类
+  config.py      Watch 载入校验 + Settings
+  datecombos.py  合法日期组合生成
+  db.py          SQLite append-only 持久化
+  httpclient.py  timeout / 退避重试 / 脱敏
+  credibility.py 可信度引擎与验收指标
+  pipeline.py    scan / verify 编排
+  reports.py     ASCII 表格与 JSON 产出
+  cli.py         argparse 入口
+  providers/     base / kiwi / ryanair /
+                 travelpayouts / amadeus / skyscanner
+tools/           数据源探测 · 缓存vs实时诊断 · 取证脚本
+tests/           52 项测试</code></pre>
+        </div>
+      </div>
+
+      <h3 class="block-title">BLOCKED / DEFERRED</h3>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr><th>项目</th><th>状态</th><th>缺什么</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Travelpayouts 取价</td><td><span class="pill pill-blocked">BLOCKED_AUTH</span></td><td><code>TRAVELPAYOUTS_TOKEN</code></td></tr>
+            <tr><td>Amadeus 核价</td><td><span class="pill pill-blocked">BLOCKED_AUTH</span></td><td><code>AMADEUS_CLIENT_ID</code> + <code>SECRET</code></td></tr>
+            <tr><td>Amadeus 测试主机网络</td><td><span class="pill pill-blocked">BLOCKED_NETWORK</span></td><td>出口对 <code>test.api.amadeus.com</code> 返回 502</td></tr>
+            <tr><td>Skyscanner 任何调用</td><td><span class="pill pill-deferred">DEFERRED</span></td><td>Partners 审批发放的 partner key</td></tr>
+            <tr><td><code>HIGH_CONFIDENCE</code> 实测</td><td><span class="pill pill-idle">未实测</span></td><td>第二个独立实时源</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 class="block-title">已知限制</h3>
+      <ul class="limits">
+        <li><code>kiwi</code> / <code>kiwi_calendar</code> 使用 Kiwi.com 公开 GraphQL 网关，属<strong>非官方接口</strong>，schema 可能变动；适配器做防御式解析，字段变更会在日志与 <code>provider_run</code> 中显式暴露。</li>
+        <li>两个 Kiwi 适配器是<strong>独立数据路径</strong>（缓存矩阵 vs 实时搜索），但<strong>不是独立厂商</strong>。跨厂商核价目前由 <code>ryanair</code> → <code>kiwi</code> 组合证明。</li>
+        <li>FX 为配置文件中的静态汇率，仅用于跨币种可比，<strong>不构成汇率系统</strong>。</li>
+        <li><code>kiwi_calendar</code> 价格矩阵单次上限 100 行，372 组合时会触发截断告警。</li>
+      </ul>
+
+      <h3 class="block-title">下一步</h3>
+      <ol class="next-list">
+        <li>凭证到位后用同一批候选重跑 <code>verify</code>，实测 <code>HIGH_CONFIDENCE</code>。</li>
+        <li>引入按航线类型 / 提前期分档的<strong>缓存乐观性校准</strong>，先做偏置校正再排序候选。</li>
+        <li>为每个 provider 记录相对基准的偏移，解决跨渠道比价的结构性价差。</li>
+        <li>改用区间分组取价，把每组合一次请求降为每区间一次，改善宽窗口性能。</li>
+        <li>在 <code>VERIFIED</code> / <code>HIGH_CONFIDENCE</code> 上接通知层。</li>
+      </ol>
+    </div>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-inner">
+    <div>
+      <strong>FlightPrice Project</strong>
+      <p>机票价格监控与旅行规划 · Phase 1 Backend MVP</p>
+    </div>
+    <div class="footer-meta">
+      <p>Status: <span class="pill pill-idle">PARTIAL</span></p>
+      <p><a href="https://github.com/gzhu4186-hub/flightpriceproject">github.com/gzhu4186-hub/flightpriceproject</a></p>
+    </div>
+  </div>
+</footer>
+
+<script>
+// Minimal scroll-spy: highlight the section currently in view. No dependencies.
+(function () {
+  var links = Array.prototype.slice.call(document.querySelectorAll('.site-nav a'));
+  var targets = links.map(function (a) {
+    return document.querySelector(a.getAttribute('href'));
+  }).filter(Boolean);
+  if (!targets.length || !('IntersectionObserver' in window)) return;
+
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      links.forEach(function (a) {
+        a.classList.toggle('active',
+          a.getAttribute('href') === '#' + e.target.id);
+      });
+    });
+  }, { rootMargin: '-20% 0px -70% 0px', threshold: 0 });
+
+  targets.forEach(function (t) { io.observe(t); });
+})();
+</script>
+
+</body>
+</html>
